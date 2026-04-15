@@ -36,19 +36,12 @@ When the user asks you to remember something, acknowledge it warmly. When asked 
   }));
 
   try {
-    const url = (import.meta.env.VITE_SUPABASE_URL || "") + "/functions/v1/jarvis-chat";
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || ""}`,
-      },
-      body: JSON.stringify({ messages: chatMessages, systemPrompt }),
+    const { data, error } = await supabase.functions.invoke("jarvis-chat", {
+      body: { messages: chatMessages, systemPrompt },
     });
     
-    if (resp.ok) {
-      const data = await resp.json();
-      return data.response || "I'm sorry, I couldn't process that request.";
+    if (!error && data?.response) {
+      return data.response as string;
     }
   } catch {
     // Fallback
