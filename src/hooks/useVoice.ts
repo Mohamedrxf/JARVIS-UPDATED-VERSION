@@ -8,19 +8,20 @@ interface UseVoiceOptions {
   wakeWordEnabled?: boolean;
 }
 
+function getSpeechRecognition(): (new () => any) | null {
+  return (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || null;
+}
+
 export function useVoice({ onTranscript, wakeWord = "hey jarvis", wakeWordEnabled = false }: UseVoiceOptions) {
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [isSupported, setIsSupported] = useState(true);
   const [interimTranscript, setInterimTranscript] = useState("");
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const wakeRecognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const wakeRecognitionRef = useRef<any>(null);
   const speakingRef = useRef(false);
 
   useEffect(() => {
-    const SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setIsSupported(false);
-    }
+    if (!getSpeechRecognition()) setIsSupported(false);
   }, []);
 
   const speak = useCallback((text: string): Promise<void> => {
@@ -32,7 +33,6 @@ export function useVoice({ onTranscript, wakeWord = "hey jarvis", wakeWordEnable
       utterance.pitch = 0.9;
       utterance.volume = 1.0;
       
-      // Try to pick a good voice
       const voices = window.speechSynthesis.getVoices();
       const preferred = voices.find(v => v.name.includes("Google") && v.lang.startsWith("en")) 
         || voices.find(v => v.lang.startsWith("en") && v.name.includes("Male"))
@@ -54,14 +54,14 @@ export function useVoice({ onTranscript, wakeWord = "hey jarvis", wakeWordEnable
   }, []);
 
   const startListening = useCallback(() => {
-    const SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+    const SR = getSpeechRecognition();
+    if (!SR) return;
     
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch {}
     }
 
-    const recognition = new SpeechRecognition();
+    const recognition = new SR();
     recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = "en-US";
@@ -69,7 +69,7 @@ export function useVoice({ onTranscript, wakeWord = "hey jarvis", wakeWordEnable
 
     recognition.onstart = () => setVoiceState("listening");
     
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    recognition.onresult = (event: any) => {
       let interim = "";
       let final = "";
       for (let i = 0; i < event.results.length; i++) {
@@ -90,11 +90,11 @@ export function useVoice({ onTranscript, wakeWord = "hey jarvis", wakeWordEnable
     
     recognition.onerror = () => setVoiceState("idle");
     recognition.onend = () => {
-      if (voiceState === "listening") setVoiceState("idle");
+      setVoiceState(prev => prev === "listening" ? "idle" : prev);
     };
 
     recognition.start();
-  }, [onTranscript, voiceState]);
+  }, [onTranscript]);
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current) {
@@ -105,19 +105,18 @@ export function useVoice({ onTranscript, wakeWord = "hey jarvis", wakeWordEnable
     setInterimTranscript("");
   }, []);
 
-  // Wake word listener
   const startWakeWordListener = useCallback(() => {
     if (!wakeWordEnabled) return;
-    const SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+    const SR = getSpeechRecognition();
+    if (!SR) return;
     
-    const recognition = new SpeechRecognition();
+    const recognition = new SR();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
     wakeRecognitionRef.current = recognition;
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    recognition.onresult = (event: any) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript.toLowerCase();
         if (transcript.includes(wakeWord)) {
@@ -129,18 +128,13 @@ export function useVoice({ onTranscript, wakeWord = "hey jarvis", wakeWordEnable
     };
     
     recognition.onend = () => {
-      // Restart wake word listener
       if (wakeWordEnabled && !speakingRef.current) {
-        setTimeout(() => {
-          try { recognition.start(); } catch {}
-        }, 500);
+        setTimeout(() => { try { recognition.start(); } catch {} }, 500);
       }
     };
     
     recognition.onerror = () => {
-      setTimeout(() => {
-        try { recognition.start(); } catch {}
-      }, 1000);
+      setTimeout(() => { try { recognition.start(); } catch {} }, 1000);
     };
 
     try { recognition.start(); } catch {}
