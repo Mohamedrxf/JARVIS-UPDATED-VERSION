@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import type { OrbState } from "@/components/jarvis/JarvisOrb";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface Message {
   id: string;
